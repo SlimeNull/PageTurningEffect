@@ -25,10 +25,16 @@ namespace PageTurningEffect.Components
             set { SetValue(SourceProperty, value); }
         }
 
-        public double SpineSize
+        public double SpineShadowSize
         {
-            get { return (double)GetValue(SpineSizeProperty); }
-            set { SetValue(SpineSizeProperty, value); }
+            get { return (double)GetValue(SpineShadowSizeProperty); }
+            set { SetValue(SpineShadowSizeProperty, value); }
+        }
+
+        public double TunningShadowSize
+        {
+            get { return (double)GetValue(TunningShadowSizeProperty); }
+            set { SetValue(TunningShadowSizeProperty, value); }
         }
 
         public Thickness Padding
@@ -74,8 +80,12 @@ namespace PageTurningEffect.Components
             DependencyProperty.Register(nameof(Source), typeof(IBookSource), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
-        public static readonly DependencyProperty SpineSizeProperty =
-            DependencyProperty.Register(nameof(SpineSize), typeof(double), typeof(SimulatedBook),
+        public static readonly DependencyProperty SpineShadowSizeProperty =
+            DependencyProperty.Register(nameof(SpineShadowSize), typeof(double), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty TunningShadowSizeProperty =
+            DependencyProperty.Register(nameof(TunningShadowSize), typeof(double), typeof(SimulatedBook), 
                 new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty PaddingProperty =
@@ -314,15 +324,42 @@ namespace PageTurningEffect.Components
             return false;
         }
 
+        private static Matrix ConstructBasicMatrix(Point origin, Vector iHat, Vector jHat)
+        {
+            return new Matrix(iHat.X, iHat.Y, jHat.X, jHat.Y, origin.X, origin.Y);
+        }
+
+        private static MatrixTransform GetTunningPageRenderTransform(Size bookSize, Thickness padding, StraightLine splitLine, PageTunningMode pageTunningMode)
+        {
+            (var origin, var iHat, var jHat) = pageTunningMode switch
+            {
+                PageTunningMode.Next => (new Point(bookSize.Width - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
+                PageTunningMode.Prev => (new Point(bookSize.Width / 2 - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
+                _ => throw new ArgumentException(),
+            };
+
+            var absIHat = origin + iHat;
+            var absJHat = origin + jHat;
+
+            origin = splitLine.Flip(origin);
+            absIHat = splitLine.Flip(absIHat);
+            absJHat = splitLine.Flip(absJHat);
+            iHat = absIHat - origin;
+            jHat = absJHat - origin;
+
+            return new MatrixTransform(ConstructBasicMatrix(origin, iHat, jHat));
+        }
+
         private void CoreRenderDoubleSide(DrawingContext drawingContext)
         {
             // properties
+            var background = Background;
             var source = Source;
 
             var actualWidth = ActualWidth;
             var actualHeight = ActualHeight;
 
-            var spineSize = SpineSize;
+            var spineSize = SpineShadowSize;
             var padding = Padding;
             var shadowOpacity = ShadowOpacity;
             var currentPage = CurrentPage;
@@ -341,7 +378,7 @@ namespace PageTurningEffect.Components
             var rightPageRenderTransform = new TranslateTransform(rightPageOrigin.X, rightPageOrigin.Y);
 
             // background
-            drawingContext.DrawRectangle(Background, null, new Rect(0, 0, ActualWidth, ActualHeight));
+            drawingContext.DrawRectangle(background, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
             // draw base content
             if (source is { })
@@ -385,7 +422,7 @@ namespace PageTurningEffect.Components
                 CalculateDoubleSidePageTunning(bookSize, DragStart, DragCurrent, out var pageTunningMode, out var splitLine))
             {
 
-#if DEBUG
+#if Gizmos
                 drawingContext.DrawEllipse(Brushes.Pink, null, splitLine.Origin, 2, 2);
                 drawingContext.DrawLine(new Pen(Brushes.Pink, 1), splitLine.Origin, splitLine.Origin + splitLine.Direction);
 #endif
@@ -430,9 +467,29 @@ namespace PageTurningEffect.Components
                     }
 
                     drawingContext.Pop();
+
+                    drawingContext.PushClip(mask2);
+
+                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, splitLine, pageTunningMode);
+
+                    drawingContext.DrawGeometry(background, null, mask2);
+                    if (pageTunningMode == PageTunningMode.Next)
+                    {
+                        drawingContext.PushTransform(tunningPageRenderTransform);
+                        source.RenderPage(drawingContext, pageSize, currentPage + 2);
+                        drawingContext.Pop();
+                    }
+                    else
+                    {
+                        drawingContext.PushTransform(tunningPageRenderTransform);
+                        source.RenderPage(drawingContext, pageSize, currentPage - 2);
+                        drawingContext.Pop();
+                    }
+
+                    drawingContext.Pop();
                 }
 
-#if DEBUG
+#if Gizmos
                 drawingContext.PushOpacity(0.5);
                 drawingContext.DrawGeometry(Brushes.Pink, null, mask1);
                 drawingContext.DrawGeometry(Brushes.Purple, null, mask2);
