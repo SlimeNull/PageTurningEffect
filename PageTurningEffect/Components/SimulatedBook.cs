@@ -85,7 +85,7 @@ namespace PageTurningEffect.Components
                 new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty TunningShadowSizeProperty =
-            DependencyProperty.Register(nameof(TunningShadowSize), typeof(double), typeof(SimulatedBook), 
+            DependencyProperty.Register(nameof(TunningShadowSize), typeof(double), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty PaddingProperty =
@@ -304,11 +304,36 @@ namespace PageTurningEffect.Components
 
         private static bool CalculateDoubleSidePageTunning(Size bookSize, Point dragStart, Point dragCurrent, out PageTunningMode pageTunningMode, out StraightLine splitLine)
         {
+            static StraightLine CorrectDoubleSidePageTunningSplitLine(Size bookSize, PageTunningMode pageTunningMode, StraightLine splitLine)
+            {
+                var lineTop = new StraightLine(new Point(0, 0), new Vector(1, 0));
+                var lineBottom = new StraightLine(new Point(0, bookSize.Height), new Vector(1, 0));
+
+                var hitPoint1 = splitLine.GetIntersection(lineTop);
+                var hitPoint2 = splitLine.GetIntersection(lineBottom);
+
+                if (pageTunningMode == PageTunningMode.Next)
+                {
+                    hitPoint1 = new Point(Math.Max(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
+                    hitPoint2 = new Point(Math.Max(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
+                    return new StraightLine(hitPoint2, hitPoint1 - hitPoint2);
+                }
+                else if (pageTunningMode == PageTunningMode.Prev)
+                {
+                    hitPoint1 = new Point(Math.Min(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
+                    hitPoint2 = new Point(Math.Min(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
+                    return new StraightLine(hitPoint1, hitPoint2 - hitPoint1);
+                }
+
+                throw new ArgumentException();
+            }
+
             if (dragStart.X < bookSize.Width / 2 &&
                 dragCurrent.X > dragStart.X)
             {
                 pageTunningMode = PageTunningMode.Prev;
                 splitLine = new LineSegment(new Point(0, dragStart.Y), dragCurrent).GetPerpendicularLine();
+                splitLine = CorrectDoubleSidePageTunningSplitLine(bookSize, pageTunningMode, splitLine);
                 return true;
             }
             else if (dragStart.X > bookSize.Width / 2 &&
@@ -316,6 +341,7 @@ namespace PageTurningEffect.Components
             {
                 pageTunningMode = PageTunningMode.Next;
                 splitLine = new LineSegment(new Point(bookSize.Width - 1, dragStart.Y), dragCurrent).GetPerpendicularLine();
+                splitLine = CorrectDoubleSidePageTunningSplitLine(bookSize, pageTunningMode, splitLine);
                 return true;
             }
 
@@ -452,7 +478,7 @@ namespace PageTurningEffect.Components
                 if (source is { })
                 {
                     drawingContext.PushClip(mask1);
-
+                    drawingContext.DrawGeometry(background, null, mask1);
                     if (pageTunningMode == PageTunningMode.Next)
                     {
                         drawingContext.PushTransform(rightPageRenderTransform);
@@ -469,10 +495,8 @@ namespace PageTurningEffect.Components
                     drawingContext.Pop();
 
                     drawingContext.PushClip(mask2);
-
-                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, splitLine, pageTunningMode);
-
                     drawingContext.DrawGeometry(background, null, mask2);
+                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, splitLine, pageTunningMode);
                     if (pageTunningMode == PageTunningMode.Next)
                     {
                         drawingContext.PushTransform(tunningPageRenderTransform);
