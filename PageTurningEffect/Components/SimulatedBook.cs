@@ -132,6 +132,20 @@ namespace PageTurningEffect.Components
 
                 return new StraightLine(midpoint, perpendicularDirection);
             }
+
+            public void ExpandToRect(double rectThickness, out Point rectP1, out Point rectP2, out Point rectP3, out Point rectP4)
+            {
+                var direction = End - Start;
+                var perpendicularDirection = new Vector(-direction.Y, direction.X);
+                perpendicularDirection.Normalize();
+
+                var offset = perpendicularDirection * (rectThickness / 2);
+
+                rectP1 = Start + offset;
+                rectP2 = End + offset;
+                rectP3 = End - offset;
+                rectP4 = Start - offset;
+            }
         }
 
         private record struct StraightLine(Point Origin, Vector Direction)
@@ -221,6 +235,39 @@ namespace PageTurningEffect.Components
             {
                 newVerticesStorage.Add(line.Flip(vertex));
             }
+        }
+
+        private static void HitRect(StraightLine line, Rect rect, out Point hit1, out Point hit2)
+        {
+            Point[] outputPoints = new Point[2];
+            int currentPointIndex = 0;
+
+            if (line.GetIntersection(new StraightLine(rect.TopLeft, new Vector(1, 0))) is { } hitUp &&
+                hitUp.X >= rect.Left && hitUp.X <= rect.Right)
+            {
+                outputPoints[currentPointIndex++] = hitUp;
+            }
+
+            if (line.GetIntersection(new StraightLine(rect.BottomLeft, new Vector(1, 0))) is { } hitBottom &&
+                hitBottom.X >= rect.Left && hitBottom.X <= rect.Right)
+            {
+                outputPoints[currentPointIndex++] = hitBottom;
+            }
+
+            if (line.GetIntersection(new StraightLine(rect.TopLeft, new Vector(0, 1))) is { } hitLeft &&
+                hitLeft.Y >= rect.Top && hitLeft.Y <= rect.Bottom)
+            {
+                outputPoints[currentPointIndex++] = hitLeft;
+            }
+
+            if (line.GetIntersection(new StraightLine(rect.TopRight, new Vector(0, 1))) is { } hitRight &&
+                hitRight.Y >= rect.Top && hitRight.Y <= rect.Bottom)
+            {
+                outputPoints[currentPointIndex++] = hitRight;
+            }
+
+            hit1 = outputPoints[0];
+            hit2 = outputPoints[1];
         }
 
         private static void SplitPolygon(IList<Point> vertices, StraightLine line, Func<StraightLine, Point, bool> pointSelector, IList<Point> pointsStorage)
@@ -385,20 +432,22 @@ namespace PageTurningEffect.Components
             var actualWidth = ActualWidth;
             var actualHeight = ActualHeight;
 
-            var spineSize = SpineShadowSize;
+            var spineShadowSize = SpineShadowSize;
+            var tunningShadowSize = TunningShadowSize;
             var padding = Padding;
             var shadowOpacity = ShadowOpacity;
             var currentPage = CurrentPage;
 
             var isDragging = IsDragging;
             var bookSize = new Size(actualWidth, actualHeight);
+            var bookRect = new Rect(0, 0, actualWidth, actualHeight);
 
             var pageSize = new Size(
-                    actualWidth / 2 - spineSize - padding.Left - padding.Right,
+                    actualWidth / 2 - spineShadowSize - padding.Left - padding.Right,
                     actualHeight - padding.Top - padding.Bottom);
 
             var leftPageOrigin = new Point(padding.Left, padding.Top);
-            var rightPageOrigin = new Point(actualWidth / 2 + spineSize + padding.Left, padding.Top);
+            var rightPageOrigin = new Point(actualWidth / 2 + spineShadowSize + padding.Left, padding.Top);
 
             var leftPageRenderTransform = new TranslateTransform(leftPageOrigin.X, leftPageOrigin.Y);
             var rightPageRenderTransform = new TranslateTransform(rightPageOrigin.X, rightPageOrigin.Y);
@@ -428,9 +477,9 @@ namespace PageTurningEffect.Components
 
             // draw spine shadow
             var spineRect = new Rect(
-                actualWidth / 2 - spineSize,
+                actualWidth / 2 - spineShadowSize,
                 0,
-                spineSize * 2,
+                spineShadowSize * 2,
                 actualHeight);
 
             var spineBrush = new LinearGradientBrush(
@@ -512,6 +561,36 @@ namespace PageTurningEffect.Components
 
                     drawingContext.Pop();
                 }
+
+                var rotationOfSplitLine = Math.Atan2(splitLine.Direction.Y, splitLine.Direction.X);
+                var angleOfSplitLine = rotationOfSplitLine / Math.PI * 180;
+
+                HitRect(splitLine, bookRect, out var hit1, out var hit2);
+                new LineSegment(hit1, hit2).ExpandToRect(tunningShadowSize * 2,
+                    out var tunningShadowRectP1,
+                    out var tunningShadowRectP2,
+                    out var tunningShadowRectP3,
+                    out var tunningShadowRectP4);
+
+                var tunningShadowGeometry = BuildPolygon([tunningShadowRectP1, tunningShadowRectP2, tunningShadowRectP3, tunningShadowRectP4]);
+                var tunningShadowBrush = new LinearGradientBrush(
+                    new GradientStopCollection()
+                    {
+                        new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.0),
+                        new GradientStop(Color.FromArgb((byte)(255 * shadowOpacity), 0, 0, 0), 0.5),
+                        new GradientStop(Color.FromArgb(0, 0, 0, 0), 1.0),
+                    }, angleOfSplitLine)
+                {
+                    StartPoint = tunningShadowRectP2,
+                    EndPoint = tunningShadowRectP3,
+                    MappingMode = BrushMappingMode.Absolute,
+                };
+
+                var tunningShadowClip = new CombinedGeometry(mask1, mask2);
+
+                drawingContext.PushClip(tunningShadowClip);
+                drawingContext.DrawGeometry(tunningShadowBrush, null, tunningShadowGeometry);
+                drawingContext.Pop();
 
 #if Gizmos
                 drawingContext.PushOpacity(0.5);
