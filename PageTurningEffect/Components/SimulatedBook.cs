@@ -13,6 +13,12 @@ namespace PageTurningEffect.Components
         private readonly List<Point> _newPageMaskPoints1 = new List<Point>();
         private readonly List<Point> _newPageMaskPoints2 = new List<Point>();
 
+        // page tunning
+        public bool _isDragging;
+        public Point _dragStart;
+        public Point _dragCurrent;
+
+
         public Brush Background
         {
             get { return (Brush)GetValue(BackgroundProperty); }
@@ -55,24 +61,6 @@ namespace PageTurningEffect.Components
             set { SetValue(CurrentPageProperty, value); }
         }
 
-        public bool IsDragging
-        {
-            get { return (bool)GetValue(IsDraggingProperty); }
-            set { SetValue(IsDraggingProperty, value); }
-        }
-
-        public Point DragStart
-        {
-            get { return (Point)GetValue(DragStartProperty); }
-            set { SetValue(DragStartProperty, value); }
-        }
-
-        public Point DragCurrent
-        {
-            get { return (Point)GetValue(DragCurrentProperty); }
-            set { SetValue(DragCurrentProperty, value); }
-        }
-
         public static readonly DependencyProperty BackgroundProperty =
             Panel.BackgroundProperty.AddOwner(typeof(SimulatedBook));
 
@@ -99,18 +87,6 @@ namespace PageTurningEffect.Components
         public static readonly DependencyProperty CurrentPageProperty =
             DependencyProperty.Register(nameof(CurrentPage), typeof(int), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty IsDraggingProperty =
-            DependencyProperty.Register(nameof(IsDragging), typeof(bool), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty DragStartProperty =
-            DependencyProperty.Register(nameof(DragStart), typeof(Point), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(default(Point), FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty DragCurrentProperty =
-            DependencyProperty.Register(nameof(DragCurrent), typeof(Point), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(default(Point), FrameworkPropertyMetadataOptions.AffectsRender));
 
         private enum PageTunningMode
         {
@@ -198,7 +174,7 @@ namespace PageTurningEffect.Components
         {
             if (CaptureMouse())
             {
-                DragStart = e.GetPosition(this);
+                _dragStart = e.GetPosition(this);
                 e.Handled = true;
             }
 
@@ -209,9 +185,10 @@ namespace PageTurningEffect.Components
         {
             if (IsMouseCaptured)
             {
-                DragCurrent = e.GetPosition(this);
-                IsDragging = true;
+                _dragCurrent = e.GetPosition(this);
+                _isDragging = true;
                 e.Handled = true;
+                InvalidateVisual();
             }
 
             base.OnMouseMove(e);
@@ -219,11 +196,12 @@ namespace PageTurningEffect.Components
 
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
-            if (IsDragging)
+            if (_isDragging)
             {
-                IsDragging = false;
+                _isDragging = false;
                 ReleaseMouseCapture();
                 e.Handled = true;
+                InvalidateVisual();
             }
 
             base.OnMouseUp(e);
@@ -438,7 +416,7 @@ namespace PageTurningEffect.Components
             var shadowOpacity = ShadowOpacity;
             var currentPage = CurrentPage;
 
-            var isDragging = IsDragging;
+            var isDragging = _isDragging;
             var bookSize = new Size(actualWidth, actualHeight);
             var bookRect = new Rect(0, 0, actualWidth, actualHeight);
 
@@ -494,7 +472,7 @@ namespace PageTurningEffect.Components
 
             // draw dragging content
             if (isDragging &&
-                CalculateDoubleSidePageTunning(bookSize, DragStart, DragCurrent, out var pageTunningMode, out var splitLine))
+                CalculateDoubleSidePageTunning(bookSize, _dragStart, _dragCurrent, out var pageTunningMode, out var splitLine))
             {
 
 #if Gizmos
@@ -555,7 +533,7 @@ namespace PageTurningEffect.Components
                     else
                     {
                         drawingContext.PushTransform(tunningPageRenderTransform);
-                        source.RenderPage(drawingContext, pageSize, currentPage - 2);
+                        source.RenderPage(drawingContext, pageSize, currentPage - 1);
                         drawingContext.Pop();
                     }
 
