@@ -3,12 +3,16 @@ using System.Collections.Generic;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace PageTurningEffect.Components
 {
     public class SimulatedBook : FrameworkElement
     {
+        private readonly List<Point> _newPageMaskPoints1 = new List<Point>();
+        private readonly List<Point> _newPageMaskPoints2 = new List<Point>();
+
         public Brush Background
         {
             get { return (Brush)GetValue(BackgroundProperty); }
@@ -98,9 +102,223 @@ namespace PageTurningEffect.Components
             DependencyProperty.Register(nameof(DragCurrent), typeof(Point), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(default(Point), FrameworkPropertyMetadataOptions.AffectsRender));
 
+        private enum PageTunningMode
+        {
+            None,
+            Prev,
+            Next,
+        }
+
+        private record struct LineSegment(Point Start, Point End)
+        {
+            public StraightLine GetPerpendicularLine()
+            {
+                var midpoint = new Point(
+                    (Start.X + End.X) / 2,
+                    (Start.Y + End.Y) / 2);
+
+                var direction = End - Start;
+                var perpendicularDirection = new Vector(-direction.Y, direction.X);
+
+                return new StraightLine(midpoint, perpendicularDirection);
+            }
+        }
+
+        private record struct StraightLine(Point Origin, Vector Direction)
+        {
+            public bool IsLeft(Point pointToTest)
+            {
+                var toPoint = pointToTest - Origin;
+                var crossProduct = Direction.X * toPoint.Y - Direction.Y * toPoint.X;
+                return crossProduct < 0;
+            }
+
+            public bool IsRight(Point pointToTest)
+                => !IsLeft(pointToTest);
+
+            public Point Flip(Point pointToPerform)
+            {
+                var toPoint = pointToPerform - Origin;
+                var directionNormalized = Direction;
+                directionNormalized.Normalize();
+
+                var projection = (toPoint.X * directionNormalized.X + toPoint.Y * directionNormalized.Y);
+                var projectionPoint = new Vector(projection * directionNormalized.X, projection * directionNormalized.Y);
+
+                var perpendicular = toPoint - projectionPoint;
+                var flipped = projectionPoint - perpendicular;
+
+                return Origin + flipped;
+            }
+
+            public Point GetIntersection(StraightLine otherLine)
+            {
+                var d1 = Direction;
+                var d2 = otherLine.Direction;
+
+                var denominator = d1.X * d2.Y - d1.Y * d2.X;
+
+                if (Math.Abs(denominator) < 1e-10)
+                {
+                    return new Point(double.NaN, double.NaN);
+                }
+
+                var originDiff = otherLine.Origin - Origin;
+                var t = (originDiff.X * d2.Y - originDiff.Y * d2.X) / denominator;
+
+                return new Point(Origin.X + t * d1.X, Origin.Y + t * d1.Y);
+            }
+        }
+
+        protected override void OnMouseDown(MouseButtonEventArgs e)
+        {
+            if (CaptureMouse())
+            {
+                DragStart = e.GetPosition(this);
+                e.Handled = true;
+            }
+
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (IsMouseCaptured)
+            {
+                DragCurrent = e.GetPosition(this);
+                IsDragging = true;
+                e.Handled = true;
+            }
+
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseUp(MouseButtonEventArgs e)
+        {
+            if (IsDragging)
+            {
+                IsDragging = false;
+                ReleaseMouseCapture();
+                e.Handled = true;
+            }
+
+            base.OnMouseUp(e);
+        }
+
+        private static void FlipPolygon(IList<Point> vertices, StraightLine line, IList<Point> newVerticesStorage)
+        {
+            foreach (var vertex in vertices)
+            {
+                newVerticesStorage.Add(line.Flip(vertex));
+            }
+        }
+
+        private static void SplitPolygon(IList<Point> vertices, StraightLine line, Func<StraightLine, Point, bool> pointSelector, IList<Point> pointsStorage)
+        {
+            bool startSide = pointSelector.Invoke(line, vertices[0]);
+            bool lastSide = startSide;
+            if (startSide)
+            {
+                pointsStorage.Add(vertices[0]);
+            }
+
+            // skip first point
+            for (int i = 1; i < vertices.Count; i++)
+            {
+                var currentSide = pointSelector.Invoke(line, vertices[i]);
+
+                // changing side
+                if (currentSide != lastSide)
+                {
+                    var lineBetweenTwoPoint = new StraightLine(vertices[i - 1], vertices[i] - vertices[i - 1]);
+                    pointsStorage.Add(line.GetIntersection(lineBetweenTwoPoint));
+                }
+
+                if (currentSide)
+                {
+                    pointsStorage.Add(vertices[i]);
+                }
+
+                lastSide = currentSide;
+            }
+
+            if (lastSide != startSide)
+            {
+                var lineBetweenTwoPoint = new StraightLine(vertices[3], vertices[3] - vertices[0]);
+                pointsStorage.Add(line.GetIntersection(lineBetweenTwoPoint));
+            }
+        }
+
+        private static void SplitRect(Rect rect, StraightLine line, IList<Point>? leftPointsStorage, IList<Point>? rightPointsStorage)
+        {
+            var corners = new Point[]
+            {
+                new Point(rect.Left, rect.Top),
+                new Point(rect.Right, rect.Top),
+                new Point(rect.Right, rect.Bottom),
+                new Point(rect.Left, rect.Bottom)
+            };
+
+            if (leftPointsStorage is { })
+            {
+                SplitPolygon(corners, line, (l, p) => l.IsLeft(p), leftPointsStorage);
+            }
+
+            if (rightPointsStorage is { })
+            {
+                SplitPolygon(corners, line, (l, p) => l.IsRight(p), rightPointsStorage);
+            }
+        }
+
+        private static Geometry BuildPolygon(IEnumerable<Point> points)
+        {
+            var pathFigure = new PathFigure { IsClosed = true };
+            var first = true;
+
+            foreach (var point in points)
+            {
+                if (first)
+                {
+                    pathFigure.StartPoint = point;
+                    first = false;
+                }
+                else
+                {
+                    var segment = new System.Windows.Media.LineSegment { Point = point };
+                    pathFigure.Segments.Add(segment);
+                }
+            }
+
+            return new PathGeometry { Figures = { pathFigure } };
+        }
+
+        private static bool CalculateDoubleSidePageTunning(Size bookSize, Point dragStart, Point dragCurrent, out PageTunningMode pageTunningMode, out StraightLine splitLine)
+        {
+            if (dragStart.X < bookSize.Width / 2 &&
+                dragCurrent.X > dragStart.X)
+            {
+                pageTunningMode = PageTunningMode.Prev;
+                splitLine = new LineSegment(new Point(0, dragStart.Y), dragCurrent).GetPerpendicularLine();
+                return true;
+            }
+            else if (dragStart.X > bookSize.Width / 2 &&
+                dragCurrent.X < dragStart.X)
+            {
+                pageTunningMode = PageTunningMode.Next;
+                splitLine = new LineSegment(new Point(bookSize.Width - 1, dragStart.Y), dragCurrent).GetPerpendicularLine();
+                return true;
+            }
+
+            splitLine = default;
+            pageTunningMode = PageTunningMode.None;
+            return false;
+        }
+
         private void CoreRenderDoubleSide(DrawingContext drawingContext)
         {
             // properties
+            var source = Source;
+
             var actualWidth = ActualWidth;
             var actualHeight = ActualHeight;
 
@@ -110,24 +328,28 @@ namespace PageTurningEffect.Components
             var currentPage = CurrentPage;
 
             var isDragging = IsDragging;
+            var bookSize = new Size(actualWidth, actualHeight);
+
+            var pageSize = new Size(
+                    actualWidth / 2 - spineSize - padding.Left - padding.Right,
+                    actualHeight - padding.Top - padding.Bottom);
+
+            var leftPageOrigin = new Point(padding.Left, padding.Top);
+            var rightPageOrigin = new Point(actualWidth / 2 + spineSize + padding.Left, padding.Top);
+
+            var leftPageRenderTransform = new TranslateTransform(leftPageOrigin.X, leftPageOrigin.Y);
+            var rightPageRenderTransform = new TranslateTransform(rightPageOrigin.X, rightPageOrigin.Y);
 
             // background
             drawingContext.DrawRectangle(Background, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
             // draw base content
-            if (Source is { } source)
+            if (source is { })
             {
-                var pageSize = new Size(
-                    actualWidth / 2 - spineSize - padding.Left - padding.Right,
-                    actualHeight - padding.Top - padding.Bottom);
-
-                var leftPageOrigin = new Point(padding.Left, padding.Top);
-                var rightPageOrigin = new Point(actualWidth / 2 + spineSize + padding.Left, padding.Top);
-
                 // left content
                 if (currentPage < source.PageCount)
                 {
-                    drawingContext.PushTransform(new TranslateTransform(leftPageOrigin.X, leftPageOrigin.Y));
+                    drawingContext.PushTransform(leftPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage);
                     drawingContext.Pop();
                 }
@@ -135,7 +357,7 @@ namespace PageTurningEffect.Components
                 // right content
                 if (currentPage + 1 < source.PageCount)
                 {
-                    drawingContext.PushTransform(new TranslateTransform(rightPageOrigin.X, rightPageOrigin.Y));
+                    drawingContext.PushTransform(rightPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage + 1);
                     drawingContext.Pop();
                 }
@@ -159,6 +381,64 @@ namespace PageTurningEffect.Components
             drawingContext.DrawRectangle(spineBrush, null, spineRect);
 
             // draw dragging content
+            if (isDragging &&
+                CalculateDoubleSidePageTunning(bookSize, DragStart, DragCurrent, out var pageTunningMode, out var splitLine))
+            {
+
+#if DEBUG
+                drawingContext.DrawEllipse(Brushes.Pink, null, splitLine.Origin, 2, 2);
+                drawingContext.DrawLine(new Pen(Brushes.Pink, 1), splitLine.Origin, splitLine.Origin + splitLine.Direction);
+#endif
+                var lineTop = new StraightLine(new Point(0, 0), new Vector(1, 0));
+                var lienBottom = new StraightLine(new Point(0, actualHeight), new Vector(1, 0));
+                var lineLeft = new StraightLine(new Point(0, 0), new Vector(0, 1));
+                var lineRight = new StraightLine(new Point(actualWidth, 0), new Vector(0, 1));
+                var lineMiddle = new StraightLine(new Point(actualWidth / 2, 0), new Vector(0, 1));
+
+                _newPageMaskPoints1.Clear();
+                _newPageMaskPoints2.Clear();
+
+                if (pageTunningMode == PageTunningMode.Next)
+                {
+                    SplitRect(new Rect(actualWidth / 2, 0, actualWidth / 2, actualHeight), splitLine, null, _newPageMaskPoints1);
+                }
+                else
+                {
+                    SplitRect(new Rect(0, 0, actualWidth / 2, actualHeight), splitLine, null, _newPageMaskPoints1);
+                }
+
+                FlipPolygon(_newPageMaskPoints1, splitLine, _newPageMaskPoints2);
+
+                var mask1 = BuildPolygon(_newPageMaskPoints1);
+                var mask2 = BuildPolygon(_newPageMaskPoints2);
+
+                if (source is { })
+                {
+                    drawingContext.PushClip(mask1);
+
+                    if (pageTunningMode == PageTunningMode.Next)
+                    {
+                        drawingContext.PushTransform(rightPageRenderTransform);
+                        source.RenderPage(drawingContext, pageSize, currentPage + 3);
+                        drawingContext.Pop();
+                    }
+                    else
+                    {
+                        drawingContext.PushTransform(leftPageRenderTransform);
+                        source.RenderPage(drawingContext, pageSize, currentPage - 2);
+                        drawingContext.Pop();
+                    }
+
+                    drawingContext.Pop();
+                }
+
+#if DEBUG
+                drawingContext.PushOpacity(0.5);
+                drawingContext.DrawGeometry(Brushes.Pink, null, mask1);
+                drawingContext.DrawGeometry(Brushes.Purple, null, mask2);
+                drawingContext.Pop();
+#endif
+            }
         }
 
         protected override void OnRender(DrawingContext drawingContext)

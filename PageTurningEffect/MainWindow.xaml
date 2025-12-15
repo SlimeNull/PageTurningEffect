@@ -12,6 +12,7 @@
                 BorderBrush="Gray"
                 Margin="24">
             <comp:SimulatedBook x:Name="book"
+                                Background="#f2e4c1"
                                 Padding="12"/>
         </Border>
     </Grid>
