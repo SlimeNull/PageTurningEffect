@@ -222,6 +222,11 @@ namespace PageTurningEffect.Components
         {
             if (IsMouseCaptured)
             {
+                if (_targetPage is { } targetPage)
+                {
+                    CurrentPage = targetPage;
+                }
+
                 _dragCurrent = e.GetPosition(this);
                 if (!_isDragging)
                 {
