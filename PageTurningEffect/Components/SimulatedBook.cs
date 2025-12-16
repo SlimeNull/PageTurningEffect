@@ -241,18 +241,23 @@ namespace PageTurningEffect.Components
         {
             if (_isDragging)
             {
+                var pageCount = Source?.PageCount ?? 0;
+
                 if (Mode == BookMode.TwoSide)
                 {
-                    if (_dragStart.X > ActualWidth / 2 &&
+                    if (CurrentPage + 2 < pageCount &&
+                        _dragStart.X > ActualWidth / 2 &&
                         _dragCurrent.X < ActualWidth / 2)
                     {
-                        _dragEnd = new Point(-10, _dragStart.Y);
+                        _dragEnd = new Point(1, _dragStart.Y);
                         _targetPage = CurrentPage + 2;
                     }
-                    else if (_dragStart.X < ActualWidth / 2 &&
+                    else if (
+                        CurrentPage - 2 >= 0 &&
+                        _dragStart.X < ActualWidth / 2 &&
                         _dragCurrent.X > ActualWidth / 2)
                     {
-                        _dragEnd = new Point(ActualWidth + 10, _dragStart.Y);
+                        _dragEnd = new Point(ActualWidth - 1, _dragStart.Y);
                         _targetPage = CurrentPage - 2;
                     }
                     else
