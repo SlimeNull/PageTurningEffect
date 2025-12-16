@@ -14,7 +14,7 @@
             <comp:SimulatedBook x:Name="book"
                                 Background="#f2e4c1"
                                 SpineShadowSize="10"
-                                TunningShadowSize="10"
+                                TurningShadowSize="10"
                                 Padding="12"/>
         </Border>
     </Grid>

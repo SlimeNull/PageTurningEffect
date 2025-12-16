@@ -24,7 +24,7 @@ namespace PageTurningEffect.Components
         private TimeSpan _dragStartEasingSpan = TimeSpan.FromMilliseconds(250);
         private TimeSpan _dragEndEasingSpan = TimeSpan.FromMilliseconds(500);
 
-        // page tunning
+        // page turning
         private bool _isDragging;
         private Point _dragStart;
         private Point _dragCurrent;
@@ -56,10 +56,10 @@ namespace PageTurningEffect.Components
             set { SetValue(SpineShadowSizeProperty, value); }
         }
 
-        public double TunningShadowSize
+        public double TurningShadowSize
         {
-            get { return (double)GetValue(TunningShadowSizeProperty); }
-            set { SetValue(TunningShadowSizeProperty, value); }
+            get { return (double)GetValue(TurningShadowSizeProperty); }
+            set { SetValue(TurningShadowSizeProperty, value); }
         }
 
         public Thickness Padding
@@ -97,8 +97,8 @@ namespace PageTurningEffect.Components
             DependencyProperty.Register(nameof(SpineShadowSize), typeof(double), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
-        public static readonly DependencyProperty TunningShadowSizeProperty =
-            DependencyProperty.Register(nameof(TunningShadowSize), typeof(double), typeof(SimulatedBook),
+        public static readonly DependencyProperty TurningShadowSizeProperty =
+            DependencyProperty.Register(nameof(TurningShadowSize), typeof(double), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty PaddingProperty =
@@ -113,7 +113,7 @@ namespace PageTurningEffect.Components
             DependencyProperty.Register(nameof(CurrentPage), typeof(int), typeof(SimulatedBook),
                 new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
 
-        private enum PageTunningMode
+        private enum PageTurningMode
         {
             None,
             Prev,
@@ -423,9 +423,9 @@ namespace PageTurningEffect.Components
             return new PathGeometry { Figures = { pathFigure } };
         }
 
-        private static bool CalculateDoubleSidePageTunning(Size bookSize, Point dragStart, Point dragCurrent, out PageTunningMode pageTunningMode, out StraightLine splitLine)
+        private static bool CalculateDoubleSidePageTurning(Size bookSize, Point dragStart, Point dragCurrent, out PageTurningMode pageTurningMode, out StraightLine splitLine)
         {
-            static StraightLine CorrectDoubleSidePageTunningSplitLine(Size bookSize, PageTunningMode pageTunningMode, StraightLine splitLine)
+            static StraightLine CorrectDoubleSidePageTurningSplitLine(Size bookSize, PageTurningMode pageTurningMode, StraightLine splitLine)
             {
                 var lineTop = new StraightLine(new Point(0, 0), new Vector(1, 0));
                 var lineBottom = new StraightLine(new Point(0, bookSize.Height), new Vector(1, 0));
@@ -433,13 +433,13 @@ namespace PageTurningEffect.Components
                 var hitPoint1 = splitLine.GetIntersection(lineTop);
                 var hitPoint2 = splitLine.GetIntersection(lineBottom);
 
-                if (pageTunningMode == PageTunningMode.Next)
+                if (pageTurningMode == PageTurningMode.Next)
                 {
                     hitPoint1 = new Point(Math.Max(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
                     hitPoint2 = new Point(Math.Max(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
                     return new StraightLine(hitPoint2, hitPoint1 - hitPoint2);
                 }
-                else if (pageTunningMode == PageTunningMode.Prev)
+                else if (pageTurningMode == PageTurningMode.Prev)
                 {
                     hitPoint1 = new Point(Math.Min(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
                     hitPoint2 = new Point(Math.Min(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
@@ -452,22 +452,22 @@ namespace PageTurningEffect.Components
             if (dragStart.X < bookSize.Width / 2 &&
                 dragCurrent.X > dragStart.X)
             {
-                pageTunningMode = PageTunningMode.Prev;
+                pageTurningMode = PageTurningMode.Prev;
                 splitLine = new LineSegment(new Point(0, dragStart.Y), dragCurrent).GetPerpendicularLine();
-                splitLine = CorrectDoubleSidePageTunningSplitLine(bookSize, pageTunningMode, splitLine);
+                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
                 return true;
             }
             else if (dragStart.X > bookSize.Width / 2 &&
                 dragCurrent.X < dragStart.X)
             {
-                pageTunningMode = PageTunningMode.Next;
+                pageTurningMode = PageTurningMode.Next;
                 splitLine = new LineSegment(new Point(bookSize.Width - 1, dragStart.Y), dragCurrent).GetPerpendicularLine();
-                splitLine = CorrectDoubleSidePageTunningSplitLine(bookSize, pageTunningMode, splitLine);
+                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
                 return true;
             }
 
             splitLine = default;
-            pageTunningMode = PageTunningMode.None;
+            pageTurningMode = PageTurningMode.None;
             return false;
         }
 
@@ -476,12 +476,12 @@ namespace PageTurningEffect.Components
             return new Matrix(iHat.X, iHat.Y, jHat.X, jHat.Y, origin.X, origin.Y);
         }
 
-        private static MatrixTransform GetTunningPageRenderTransform(Size bookSize, Thickness padding, double spineShadowSize, StraightLine splitLine, PageTunningMode pageTunningMode)
+        private static MatrixTransform GetTurningPageRenderTransform(Size bookSize, Thickness padding, double spineShadowSize, StraightLine splitLine, PageTurningMode pageTurningMode)
         {
-            (var origin, var iHat, var jHat) = pageTunningMode switch
+            (var origin, var iHat, var jHat) = pageTurningMode switch
             {
-                PageTunningMode.Next => (new Point(bookSize.Width - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
-                PageTunningMode.Prev => (new Point(bookSize.Width / 2 - padding.Left - spineShadowSize, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
+                PageTurningMode.Next => (new Point(bookSize.Width - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
+                PageTurningMode.Prev => (new Point(bookSize.Width / 2 - padding.Left - spineShadowSize, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
                 _ => throw new ArgumentException(),
             };
 
@@ -507,7 +507,7 @@ namespace PageTurningEffect.Components
             var actualHeight = ActualHeight;
 
             var spineShadowSize = SpineShadowSize;
-            var tunningShadowSize = TunningShadowSize;
+            var turningShadowSize = TurningShadowSize;
             var padding = Padding;
             var shadowOpacity = ShadowOpacity;
             var currentPage = CurrentPage;
@@ -561,7 +561,8 @@ namespace PageTurningEffect.Components
             if (source is { })
             {
                 // left content
-                if (currentPage < source.PageCount)
+                if (currentPage >= 0 &&
+                    currentPage < source.PageCount)
                 {
                     drawingContext.PushTransform(leftPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage);
@@ -569,7 +570,8 @@ namespace PageTurningEffect.Components
                 }
 
                 // right content
-                if (currentPage + 1 < source.PageCount)
+                if (currentPage >= 0 &&
+                    currentPage + 1 < source.PageCount)
                 {
                     drawingContext.PushTransform(rightPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage + 1);
@@ -596,7 +598,7 @@ namespace PageTurningEffect.Components
 
             // draw dragging content
             if (isDragging &&
-                CalculateDoubleSidePageTunning(bookSize, dragStart, dragCurrent, out var pageTunningMode, out var splitLine))
+                CalculateDoubleSidePageTurning(bookSize, dragStart, dragCurrent, out var pageTurningMode, out var splitLine))
             {
 
 #if Gizmos
@@ -612,7 +614,7 @@ namespace PageTurningEffect.Components
                 _newPageMaskPoints1.Clear();
                 _newPageMaskPoints2.Clear();
 
-                if (pageTunningMode == PageTunningMode.Next)
+                if (pageTurningMode == PageTurningMode.Next)
                 {
                     SplitRect(new Rect(actualWidth / 2, 0, actualWidth / 2, actualHeight), splitLine, null, _newPageMaskPoints1);
                 }
@@ -630,14 +632,14 @@ namespace PageTurningEffect.Components
                 {
                     drawingContext.PushClip(mask1);
                     drawingContext.DrawGeometry(background, null, mask1);
-                    if (pageTunningMode == PageTunningMode.Next &&
+                    if (pageTurningMode == PageTurningMode.Next &&
                         currentPage + 3 >= 0 && currentPage + 3 < source.PageCount)
                     {
                         drawingContext.PushTransform(rightPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage + 3);
                         drawingContext.Pop();
                     }
-                    else if (pageTunningMode == PageTunningMode.Prev &&
+                    else if (pageTurningMode == PageTurningMode.Prev &&
                         currentPage - 2 >= 0 && currentPage - 2 < source.PageCount)
                     {
                         drawingContext.PushTransform(leftPageRenderTransform);
@@ -649,18 +651,18 @@ namespace PageTurningEffect.Components
 
                     drawingContext.PushClip(mask2);
                     drawingContext.DrawGeometry(background, null, mask2);
-                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, spineShadowSize, splitLine, pageTunningMode);
-                    if (pageTunningMode == PageTunningMode.Next &&
+                    var turningPageRenderTransform = GetTurningPageRenderTransform(bookSize, padding, spineShadowSize, splitLine, pageTurningMode);
+                    if (pageTurningMode == PageTurningMode.Next &&
                         currentPage + 2 >= 0 && currentPage + 2 < source.PageCount)
                     {
-                        drawingContext.PushTransform(tunningPageRenderTransform);
+                        drawingContext.PushTransform(turningPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage + 2);
                         drawingContext.Pop();
                     }
-                    else if (pageTunningMode == PageTunningMode.Prev &&
+                    else if (pageTurningMode == PageTurningMode.Prev &&
                         currentPage - 1 >= 0 && currentPage - 1 < source.PageCount)
                     {
-                        drawingContext.PushTransform(tunningPageRenderTransform);
+                        drawingContext.PushTransform(turningPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage - 1);
                         drawingContext.Pop();
                     }
@@ -672,14 +674,14 @@ namespace PageTurningEffect.Components
                 var angleOfSplitLine = rotationOfSplitLine / Math.PI * 180;
 
                 HitRect(splitLine, bookRect, out var hit1, out var hit2);
-                new LineSegment(hit1, hit2).ExpandToRect(tunningShadowSize * 2,
-                    out var tunningShadowRectP1,
-                    out var tunningShadowRectP2,
-                    out var tunningShadowRectP3,
-                    out var tunningShadowRectP4);
+                new LineSegment(hit1, hit2).ExpandToRect(turningShadowSize * 2,
+                    out var turningShadowRectP1,
+                    out var turningShadowRectP2,
+                    out var turningShadowRectP3,
+                    out var turningShadowRectP4);
 
-                var tunningShadowGeometry = BuildPolygon([tunningShadowRectP1, tunningShadowRectP2, tunningShadowRectP3, tunningShadowRectP4]);
-                var tunningShadowBrush = new LinearGradientBrush(
+                var turningShadowGeometry = BuildPolygon([turningShadowRectP1, turningShadowRectP2, turningShadowRectP3, turningShadowRectP4]);
+                var turningShadowBrush = new LinearGradientBrush(
                     new GradientStopCollection()
                     {
                         new GradientStop(Color.FromArgb(0, 0, 0, 0), 0.0),
@@ -687,15 +689,15 @@ namespace PageTurningEffect.Components
                         new GradientStop(Color.FromArgb(0, 0, 0, 0), 1.0),
                     }, angleOfSplitLine)
                 {
-                    StartPoint = tunningShadowRectP2,
-                    EndPoint = tunningShadowRectP3,
+                    StartPoint = turningShadowRectP2,
+                    EndPoint = turningShadowRectP3,
                     MappingMode = BrushMappingMode.Absolute,
                 };
 
-                var tunningShadowClip = new CombinedGeometry(mask1, mask2);
+                var turningShadowClip = new CombinedGeometry(mask1, mask2);
 
-                drawingContext.PushClip(tunningShadowClip);
-                drawingContext.DrawGeometry(tunningShadowBrush, null, tunningShadowGeometry);
+                drawingContext.PushClip(turningShadowClip);
+                drawingContext.DrawGeometry(turningShadowBrush, null, turningShadowGeometry);
                 drawingContext.Pop();
 
 #if Gizmos
