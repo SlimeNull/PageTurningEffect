@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.Eventing.Reader;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace PageTurningEffect.Components
 {
@@ -14,10 +16,20 @@ namespace PageTurningEffect.Components
         private readonly List<Point> _newPageMaskPoints1 = new List<Point>();
         private readonly List<Point> _newPageMaskPoints2 = new List<Point>();
 
+        // animating
+        private IEasingFunction _easingFunction = new CubicEase() { EasingMode = EasingMode.EaseOut };
+        private DateTime _dragStartTime;
+        private DateTime _dragEndTime;
+
+        private TimeSpan _dragStartEasingSpan = TimeSpan.FromMilliseconds(250);
+        private TimeSpan _dragEndEasingSpan = TimeSpan.FromMilliseconds(500);
+
         // page tunning
-        public bool _isDragging;
-        public Point _dragStart;
-        public Point _dragCurrent;
+        private bool _isDragging;
+        private Point _dragStart;
+        private Point _dragCurrent;
+        private Point _dragEnd;        // from calculation
+        private int? _targetPage;
 
 
         public BookMode Mode
@@ -188,6 +200,18 @@ namespace PageTurningEffect.Components
             if (CaptureMouse())
             {
                 _dragStart = e.GetPosition(this);
+                if (Mode == BookMode.TwoSide)
+                {
+                    if (_dragStart.X > ActualWidth / 2)
+                    {
+                        _dragStart.X = ActualWidth;
+                    }
+                    else if (_dragStart.X < ActualWidth / 2)
+                    {
+                        _dragStart.X = 0;
+                    }
+                }
+
                 e.Handled = true;
             }
 
@@ -199,6 +223,12 @@ namespace PageTurningEffect.Components
             if (IsMouseCaptured)
             {
                 _dragCurrent = e.GetPosition(this);
+                if (!_isDragging)
+                {
+                    _dragStartTime = DateTime.Now;
+                    EnsureAnimationRunning();
+                }
+
                 _isDragging = true;
                 e.Handled = true;
                 InvalidateVisual();
@@ -216,22 +246,56 @@ namespace PageTurningEffect.Components
                     if (_dragStart.X > ActualWidth / 2 &&
                         _dragCurrent.X < ActualWidth / 2)
                     {
-                        CurrentPage += 2;
+                        _dragEnd = new Point(-10, _dragStart.Y);
+                        _targetPage = CurrentPage + 2;
                     }
                     else if (_dragStart.X < ActualWidth / 2 &&
                         _dragCurrent.X > ActualWidth / 2)
                     {
-                        CurrentPage = Math.Max(0, CurrentPage - 2);
+                        _dragEnd = new Point(ActualWidth + 10, _dragStart.Y);
+                        _targetPage = CurrentPage - 2;
+                    }
+                    else
+                    {
+                        _dragEnd = _dragStart;
                     }
                 }
 
                 _isDragging = false;
+                _dragEndTime = DateTime.Now;
+                EnsureAnimationRunning();
                 ReleaseMouseCapture();
                 e.Handled = true;
                 InvalidateVisual();
             }
 
             base.OnMouseUp(e);
+        }
+
+        private void EnsureAnimationRunning()
+        {
+            CompositionTarget.Rendering -= CompositionTargetRendering;
+            CompositionTarget.Rendering += CompositionTargetRendering;
+        }
+
+        private void CompositionTargetRendering(object? sender, EventArgs e)
+        {
+            var now = DateTime.Now;
+            InvalidateVisual();
+
+            if ((_isDragging && (now - _dragStartTime) >= _dragStartEasingSpan) ||
+                (!_isDragging && (now - _dragEndTime) >= _dragEndEasingSpan))
+            {
+                if (_targetPage is { } currentPage)
+                {
+                    CurrentPage = currentPage;
+                    _targetPage = null;
+
+                    InvalidateVisual();
+                }
+
+                CompositionTarget.Rendering -= CompositionTargetRendering;
+            }
         }
 
         private static void FlipPolygon(IList<Point> vertices, StraightLine line, IList<Point> newVerticesStorage)
@@ -407,12 +471,12 @@ namespace PageTurningEffect.Components
             return new Matrix(iHat.X, iHat.Y, jHat.X, jHat.Y, origin.X, origin.Y);
         }
 
-        private static MatrixTransform GetTunningPageRenderTransform(Size bookSize, Thickness padding, StraightLine splitLine, PageTunningMode pageTunningMode)
+        private static MatrixTransform GetTunningPageRenderTransform(Size bookSize, Thickness padding, double spineShadowSize, StraightLine splitLine, PageTunningMode pageTunningMode)
         {
             (var origin, var iHat, var jHat) = pageTunningMode switch
             {
                 PageTunningMode.Next => (new Point(bookSize.Width - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
-                PageTunningMode.Prev => (new Point(bookSize.Width / 2 - padding.Left, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
+                PageTunningMode.Prev => (new Point(bookSize.Width / 2 - padding.Left - spineShadowSize, padding.Top), new Vector(-1, 0), new Vector(0, 1)),
                 _ => throw new ArgumentException(),
             };
 
@@ -457,6 +521,34 @@ namespace PageTurningEffect.Components
             var leftPageRenderTransform = new TranslateTransform(leftPageOrigin.X, leftPageOrigin.Y);
             var rightPageRenderTransform = new TranslateTransform(rightPageOrigin.X, rightPageOrigin.Y);
 
+            // animating
+            var now = DateTime.Now;
+
+            // dragging
+            var dragStart = _dragStart;
+            var dragCurrent = _dragCurrent;
+            if (now - _dragStartTime < _dragStartEasingSpan)
+            {
+                var t = (now - _dragStartTime) / _dragStartEasingSpan;
+                var easedT = _easingFunction.Ease(t);
+
+                dragCurrent = new Point(
+                    _dragStart.X + (_dragCurrent.X - _dragStart.X) * easedT,
+                    _dragStart.Y + (_dragCurrent.Y - _dragStart.Y) * easedT);
+            }
+
+            if (!isDragging &&
+                now - _dragEndTime < _dragEndEasingSpan)
+            {
+                var t = (now - _dragEndTime) / _dragEndEasingSpan;
+                var easedT = _easingFunction.Ease(t);
+
+                isDragging = true;
+                dragCurrent = new Point(
+                    _dragCurrent.X + (_dragEnd.X - _dragCurrent.X) * easedT,
+                    _dragCurrent.Y + (_dragEnd.Y - _dragCurrent.Y) * easedT);
+            }
+
             // background
             drawingContext.DrawRectangle(background, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
@@ -499,7 +591,7 @@ namespace PageTurningEffect.Components
 
             // draw dragging content
             if (isDragging &&
-                CalculateDoubleSidePageTunning(bookSize, _dragStart, _dragCurrent, out var pageTunningMode, out var splitLine))
+                CalculateDoubleSidePageTunning(bookSize, dragStart, dragCurrent, out var pageTunningMode, out var splitLine))
             {
 
 #if Gizmos
@@ -552,7 +644,7 @@ namespace PageTurningEffect.Components
 
                     drawingContext.PushClip(mask2);
                     drawingContext.DrawGeometry(background, null, mask2);
-                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, splitLine, pageTunningMode);
+                    var tunningPageRenderTransform = GetTunningPageRenderTransform(bookSize, padding, spineShadowSize, splitLine, pageTunningMode);
                     if (pageTunningMode == PageTunningMode.Next &&
                         currentPage + 2 >= 0 && currentPage + 2 < source.PageCount)
                     {
