@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PageTurningEffect"
         xmlns:comp="clr-namespace:PageTurningEffect.Components"
+        xmlns:bc="clr-namespace:PageTurningEffect.BookContents"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
     <Grid>
@@ -15,7 +16,25 @@
                                 Background="#f2e4c1"
                                 SpineShadowSize="10"
                                 TurningShadowSize="10"
-                                Padding="12"/>
+                                Padding="12">
+                <bc:ControlBookContent>
+                    <bc:ControlBookPage>
+                        <StackPanel>
+                            <Button Content="QWQ"/>
+                        </StackPanel>
+                    </bc:ControlBookPage>
+                    <bc:ControlBookPage>
+                        <StackPanel>
+                            <Button Content="QWQ"/>
+                        </StackPanel>
+                    </bc:ControlBookPage>
+                    <bc:ControlBookPage>
+                        <StackPanel>
+                            <Button Content="QWQ"/>
+                        </StackPanel>
+                    </bc:ControlBookPage>
+                </bc:ControlBookContent>
+            </comp:SimulatedBook>
         </Border>
     </Grid>
 </Window>

@@ -12,8 +12,10 @@ namespace PageTurningEffect.Demo
     {
         public int GetPageCount(Size pageSize) => 10;
 
-        public void RenderPage(DrawingContext drawingContext, Size pageSize, int pageIndex)
+        public void RenderPage(BookPageRenderContext context, Size pageSize, int pageIndex)
         {
+            var drawingContext = context.DrawingContext;
+
             // Draw background
             drawingContext.DrawRectangle(Brushes.White, null, new Rect(0, 0, pageSize.Width, pageSize.Height));
 

@@ -195,8 +195,10 @@ namespace PageTurningEffect.BookContents
             return _pages.Count;
         }
 
-        public void RenderPage(DrawingContext drawingContext, Size pageSize, int pageIndex)
+        public void RenderPage(BookPageRenderContext context, Size pageSize, int pageIndex)
         {
+            var drawingContext = context.DrawingContext;
+
             // 如果还没有计算分页，先计算
             if (_pages is null ||
                 _currengPageSize != pageSize)

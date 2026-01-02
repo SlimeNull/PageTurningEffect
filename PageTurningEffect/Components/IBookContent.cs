@@ -6,6 +6,6 @@ namespace PageTurningEffect.Components
     public interface IBookContent
     {
         public int GetPageCount(Size pageSize);
-        public void RenderPage(DrawingContext drawingContext, Size pageSize, int pageIndex);
+        public void RenderPage(BookPageRenderContext context, Size pageSize, int pageIndex);
     }
 }

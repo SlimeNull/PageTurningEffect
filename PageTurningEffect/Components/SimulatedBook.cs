@@ -14,7 +14,7 @@ using System.Windows.Media.Animation;
 namespace PageTurningEffect.Components
 {
     [ContentProperty(nameof(Content))]
-    public class SimulatedBook : FrameworkElement
+    public partial class SimulatedBook : FrameworkElement
     {
         private readonly List<Point> _newPageMaskPoints1 = new List<Point>();
         private readonly List<Point> _newPageMaskPoints2 = new List<Point>();
@@ -38,6 +38,10 @@ namespace PageTurningEffect.Components
         // caching
         private StraightLine _lastCalculatedStraightLine;
 
+        // ui elements
+        private BookUIElementContainer _elementContainer1;  // left
+        private BookUIElementContainer _elementContainer2;  // right
+        private BookUIElementContainer _elementContainer3;  // tunning
 
         public BookMode Mode
         {
@@ -81,125 +85,60 @@ namespace PageTurningEffect.Components
             set { SetValue(ShadowOpacityProperty, value); }
         }
 
+        public Size PageSize => CalculatePageSize(new Size(ActualWidth, ActualHeight));
+
         public int CurrentPage
         {
             get { return (int)GetValue(CurrentPageProperty); }
             set { SetValue(CurrentPageProperty, value); }
         }
 
+        protected override int VisualChildrenCount => 3;
 
-
-        public static readonly DependencyProperty BackgroundProperty =
-            Panel.BackgroundProperty.AddOwner(typeof(SimulatedBook));
-
-        public static readonly DependencyProperty ModeProperty =
-            DependencyProperty.Register(nameof(Mode), typeof(BookMode), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(BookMode.TwoSide, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty SourceProperty =
-            DependencyProperty.Register(nameof(Content), typeof(IBookContent), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, propertyChangedCallback: OnContentChanged));
-
-        public static readonly DependencyProperty SpineShadowSizeProperty =
-            DependencyProperty.Register(nameof(SpineShadowSize), typeof(double), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty TurningShadowSizeProperty =
-            DependencyProperty.Register(nameof(TurningShadowSize), typeof(double), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty PaddingProperty =
-            DependencyProperty.Register(nameof(Padding), typeof(Thickness), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(default(Thickness), FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty ShadowOpacityProperty =
-            DependencyProperty.Register(nameof(ShadowOpacity), typeof(double), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(0.5, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        public static readonly DependencyProperty CurrentPageProperty =
-            DependencyProperty.Register(nameof(CurrentPage), typeof(int), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-        private enum PageTurningMode
+        protected override IEnumerator LogicalChildren
         {
-            None,
-            Prev,
-            Next,
-        }
-
-        private record struct LineSegment(Point Start, Point End)
-        {
-            public StraightLine GetPerpendicularLine()
+            get
             {
-                var midpoint = new Point(
-                    (Start.X + End.X) / 2,
-                    (Start.Y + End.Y) / 2);
-
-                var direction = End - Start;
-                var perpendicularDirection = new Vector(-direction.Y, direction.X);
-
-                return new StraightLine(midpoint, perpendicularDirection);
-            }
-
-            public void ExpandToRect(double rectThickness, out Point rectP1, out Point rectP2, out Point rectP3, out Point rectP4)
-            {
-                var direction = End - Start;
-                var perpendicularDirection = new Vector(-direction.Y, direction.X);
-                perpendicularDirection.Normalize();
-
-                var offset = perpendicularDirection * (rectThickness / 2);
-
-                rectP1 = Start + offset;
-                rectP2 = End + offset;
-                rectP3 = End - offset;
-                rectP4 = Start - offset;
-            }
-        }
-
-        private record struct StraightLine(Point Origin, Vector Direction)
-        {
-            public bool IsLeft(Point pointToTest)
-            {
-                var toPoint = pointToTest - Origin;
-                var crossProduct = Direction.X * toPoint.Y - Direction.Y * toPoint.X;
-                return crossProduct < 0;
-            }
-
-            public bool IsRight(Point pointToTest)
-                => !IsLeft(pointToTest);
-
-            public Point Flip(Point pointToPerform)
-            {
-                var toPoint = pointToPerform - Origin;
-                var directionNormalized = Direction;
-                directionNormalized.Normalize();
-
-                var projection = (toPoint.X * directionNormalized.X + toPoint.Y * directionNormalized.Y);
-                var projectionPoint = new Vector(projection * directionNormalized.X, projection * directionNormalized.Y);
-
-                var perpendicular = toPoint - projectionPoint;
-                var flipped = projectionPoint - perpendicular;
-
-                return Origin + flipped;
-            }
-
-            public Point GetIntersection(StraightLine otherLine)
-            {
-                var d1 = Direction;
-                var d2 = otherLine.Direction;
-
-                var denominator = d1.X * d2.Y - d1.Y * d2.X;
-
-                if (Math.Abs(denominator) < 1e-10)
+                if (Content is { } content)
                 {
-                    return new Point(double.NaN, double.NaN);
+                    yield return content;
                 }
-
-                var originDiff = otherLine.Origin - Origin;
-                var t = (originDiff.X * d2.Y - originDiff.Y * d2.X) / denominator;
-
-                return new Point(Origin.X + t * d1.X, Origin.Y + t * d1.Y);
             }
+        }
+
+        public SimulatedBook()
+        {
+            _elementContainer1 = new BookUIElementContainer(this);
+            _elementContainer2 = new BookUIElementContainer(this);
+            _elementContainer3 = new BookUIElementContainer(this);
+
+            AddVisualChild(_elementContainer1);
+            AddVisualChild(_elementContainer2);
+            AddVisualChild(_elementContainer3);
+        }
+
+        protected override Visual GetVisualChild(int index)
+        {
+            return index switch
+            {
+                0 => _elementContainer1,
+                1 => _elementContainer2,
+                2 => _elementContainer3,
+                _ => throw new ArgumentOutOfRangeException(nameof(index)),
+            };
+        }
+
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            base.ArrangeOverride(finalSize);
+
+            var pageSize = CalculatePageSize(finalSize);
+            var containerRect = new Rect(default(Point), pageSize);
+            _elementContainer1.Arrange(containerRect);
+            _elementContainer2.Arrange(containerRect);
+            _elementContainer3.Arrange(containerRect);
+
+            return finalSize;
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -301,15 +240,25 @@ namespace PageTurningEffect.Components
             base.OnMouseUp(e);
         }
 
-        protected override IEnumerator LogicalChildren
+        private Size CalculatePageSize(Size thisSize)
         {
-            get
+            var actualWidth = thisSize.Width;
+            var actualHeight = thisSize.Height;
+
+            var spineShadowSize = SpineShadowSize;
+            var padding = Padding;
+            var currentPage = CurrentPage;
+
+            if (actualWidth <= 0 || actualHeight <= 0)
             {
-                if (Content is { } content)
-                {
-                    yield return content;
-                }
+                return new Size(0, 0);
             }
+
+            var pageSize = new Size(
+                    actualWidth / 2 - spineShadowSize - padding.Left - padding.Right,
+                    actualHeight - padding.Top - padding.Bottom);
+
+            return pageSize;
         }
 
         private void EnsureAnimationRunning()
@@ -622,6 +571,13 @@ namespace PageTurningEffect.Components
                     _dragCurrent.Y + (_dragEnd.Y - _dragCurrent.Y) * easedTForY);
             }
 
+            // reset element children state
+            _elementContainer1.Children.Clear();
+            _elementContainer2.Children.Clear();
+            _elementContainer3.Children.Clear();
+            _elementContainer1.RenderTransform = leftPageRenderTransform;
+            _elementContainer2.RenderTransform = rightPageRenderTransform;
+
             // background
             drawingContext.DrawRectangle(background, null, new Rect(0, 0, ActualWidth, ActualHeight));
 
@@ -632,8 +588,11 @@ namespace PageTurningEffect.Components
                 if (currentPage >= 0 &&
                     currentPage < pageCount)
                 {
+                    // page render contexts
+                    var leftPageRenderContext = new BookPageRenderContext(drawingContext, element => _elementContainer1.Children.Add(element));
+
                     drawingContext.PushTransform(leftPageRenderTransform);
-                    source.RenderPage(drawingContext, pageSize, currentPage);
+                    source.RenderPage(leftPageRenderContext, pageSize, currentPage);
                     drawingContext.Pop();
                 }
 
@@ -641,8 +600,11 @@ namespace PageTurningEffect.Components
                 if (currentPage >= 0 &&
                     currentPage + 1 < pageCount)
                 {
+                    // page render contexts
+                    var rightPageRenderContext = new BookPageRenderContext(drawingContext, element => _elementContainer2.Children.Add(element));
+
                     drawingContext.PushTransform(rightPageRenderTransform);
-                    source.RenderPage(drawingContext, pageSize, currentPage + 1);
+                    source.RenderPage(rightPageRenderContext, pageSize, currentPage + 1);
                     drawingContext.Pop();
                 }
             }
@@ -703,15 +665,21 @@ namespace PageTurningEffect.Components
                     if (pageTurningMode == PageTurningMode.Next &&
                         currentPage + 3 >= 0 && currentPage + 3 < pageCount)
                     {
+                        // page render contexts
+                        var leftPageRenderContext = new BookPageRenderContext(drawingContext, element => _elementContainer1.Children.Add(element));
+
                         drawingContext.PushTransform(rightPageRenderTransform);
-                        source.RenderPage(drawingContext, pageSize, currentPage + 3);
+                        source.RenderPage(leftPageRenderContext, pageSize, currentPage + 3);
                         drawingContext.Pop();
                     }
                     else if (pageTurningMode == PageTurningMode.Prev &&
                         currentPage - 2 >= 0 && currentPage - 2 < pageCount)
                     {
+                        // page render contexts
+                        var rightPageRenderContext = new BookPageRenderContext(drawingContext, element => _elementContainer2.Children.Add(element));
+
                         drawingContext.PushTransform(leftPageRenderTransform);
-                        source.RenderPage(drawingContext, pageSize, currentPage - 2);
+                        source.RenderPage(rightPageRenderContext, pageSize, currentPage - 2);
                         drawingContext.Pop();
                     }
 
@@ -720,18 +688,21 @@ namespace PageTurningEffect.Components
                     drawingContext.PushClip(mask2);
                     drawingContext.DrawGeometry(background, null, mask2);
                     var turningPageRenderTransform = GetTurningPageRenderTransform(bookSize, padding, spineShadowSize, splitLine, pageTurningMode);
+                    var turningPageRenderContext = new BookPageRenderContext(drawingContext, element => _elementContainer3.Children.Add(element));
+                    _elementContainer3.RenderTransform = turningPageRenderTransform;
+
                     if (pageTurningMode == PageTurningMode.Next &&
                         currentPage + 2 >= 0 && currentPage + 2 < pageCount)
                     {
                         drawingContext.PushTransform(turningPageRenderTransform);
-                        source.RenderPage(drawingContext, pageSize, currentPage + 2);
+                        source.RenderPage(turningPageRenderContext, pageSize, currentPage + 2);
                         drawingContext.Pop();
                     }
                     else if (pageTurningMode == PageTurningMode.Prev &&
                         currentPage - 1 >= 0 && currentPage - 1 < pageCount)
                     {
                         drawingContext.PushTransform(turningPageRenderTransform);
-                        source.RenderPage(drawingContext, pageSize, currentPage - 1);
+                        source.RenderPage(turningPageRenderContext, pageSize, currentPage - 1);
                         drawingContext.Pop();
                     }
 
@@ -781,5 +752,37 @@ namespace PageTurningEffect.Components
                 CoreRenderDoubleSide(drawingContext);
             }
         }
+
+
+        public static readonly DependencyProperty BackgroundProperty =
+            Panel.BackgroundProperty.AddOwner(typeof(SimulatedBook));
+
+        public static readonly DependencyProperty ModeProperty =
+            DependencyProperty.Register(nameof(Mode), typeof(BookMode), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(BookMode.TwoSide, FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty SourceProperty =
+            DependencyProperty.Register(nameof(Content), typeof(IBookContent), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, propertyChangedCallback: OnContentChanged));
+
+        public static readonly DependencyProperty SpineShadowSizeProperty =
+            DependencyProperty.Register(nameof(SpineShadowSize), typeof(double), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty TurningShadowSizeProperty =
+            DependencyProperty.Register(nameof(TurningShadowSize), typeof(double), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(5.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty PaddingProperty =
+            DependencyProperty.Register(nameof(Padding), typeof(Thickness), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(default(Thickness), FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty ShadowOpacityProperty =
+            DependencyProperty.Register(nameof(ShadowOpacity), typeof(double), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(0.5, FrameworkPropertyMetadataOptions.AffectsRender));
+
+        public static readonly DependencyProperty CurrentPageProperty =
+            DependencyProperty.Register(nameof(CurrentPage), typeof(int), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
     }
 }
