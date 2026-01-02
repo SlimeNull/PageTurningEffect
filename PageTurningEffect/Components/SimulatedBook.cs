@@ -18,6 +18,7 @@ namespace PageTurningEffect.Components
 
         // animating
         private IEasingFunction _easingFunction = new CubicEase() { EasingMode = EasingMode.EaseOut };
+        private IEasingFunction _easingFunctionOutForY = new QuadraticEase() { EasingMode = EasingMode.EaseOut };
         private DateTime _dragStartTime;
         private DateTime _dragEndTime;
 
@@ -30,6 +31,9 @@ namespace PageTurningEffect.Components
         private Point _dragCurrent;
         private Point _dragEnd;        // from calculation
         private int? _targetPage;
+
+        // caching
+        private StraightLine _lastCalculatedStraightLine;
 
 
         public BookMode Mode
@@ -204,7 +208,7 @@ namespace PageTurningEffect.Components
                 {
                     if (_dragStart.X > ActualWidth / 2)
                     {
-                        _dragStart.X = ActualWidth;
+                        _dragStart.X = ActualWidth - 1;
                     }
                     else if (_dragStart.X < ActualWidth / 2)
                     {
@@ -306,6 +310,67 @@ namespace PageTurningEffect.Components
 
                 CompositionTarget.Rendering -= CompositionTargetRendering;
             }
+        }
+
+        private StraightLine CalculateSplitLineWithCache(Point p1, Point p2)
+        {
+            var calculated = new LineSegment(p1, p2).GetPerpendicularLine();
+            if ((p1 - p2).LengthSquared < 0.5 &&
+                _lastCalculatedStraightLine.Direction.LengthSquared > 0.5)
+            {
+                calculated = new StraightLine(calculated.Origin, _lastCalculatedStraightLine.Direction);
+            }
+
+            _lastCalculatedStraightLine = calculated;
+            return calculated;
+        }
+
+        private bool CalculateDoubleSidePageTurning(Size bookSize, Point dragStart, Point dragCurrent, out PageTurningMode pageTurningMode, out StraightLine splitLine)
+        {
+            static StraightLine CorrectDoubleSidePageTurningSplitLine(Size bookSize, PageTurningMode pageTurningMode, StraightLine splitLine)
+            {
+                var lineTop = new StraightLine(new Point(0, 0), new Vector(1, 0));
+                var lineBottom = new StraightLine(new Point(0, bookSize.Height), new Vector(1, 0));
+
+                var hitPoint1 = splitLine.GetIntersection(lineTop);
+                var hitPoint2 = splitLine.GetIntersection(lineBottom);
+
+                if (pageTurningMode == PageTurningMode.Next)
+                {
+                    hitPoint1 = new Point(Math.Max(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
+                    hitPoint2 = new Point(Math.Max(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
+                    return new StraightLine(hitPoint2, hitPoint1 - hitPoint2);
+                }
+                else if (pageTurningMode == PageTurningMode.Prev)
+                {
+                    hitPoint1 = new Point(Math.Min(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
+                    hitPoint2 = new Point(Math.Min(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
+                    return new StraightLine(hitPoint1, hitPoint2 - hitPoint1);
+                }
+
+                throw new ArgumentException();
+            }
+
+            if (dragStart.X < bookSize.Width / 2 &&
+                dragCurrent.X > dragStart.X)
+            {
+                pageTurningMode = PageTurningMode.Prev;
+                splitLine = CalculateSplitLineWithCache(new Point(0, dragStart.Y), dragCurrent);
+                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
+                return true;
+            }
+            else if (dragStart.X > bookSize.Width / 2 &&
+                dragCurrent.X < dragStart.X)
+            {
+                pageTurningMode = PageTurningMode.Next;
+                splitLine = CalculateSplitLineWithCache(new Point(bookSize.Width - 1, dragStart.Y), dragCurrent);
+                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
+                return true;
+            }
+
+            splitLine = default;
+            pageTurningMode = PageTurningMode.None;
+            return false;
         }
 
         private static void FlipPolygon(IList<Point> vertices, StraightLine line, IList<Point> newVerticesStorage)
@@ -428,54 +493,6 @@ namespace PageTurningEffect.Components
             return new PathGeometry { Figures = { pathFigure } };
         }
 
-        private static bool CalculateDoubleSidePageTurning(Size bookSize, Point dragStart, Point dragCurrent, out PageTurningMode pageTurningMode, out StraightLine splitLine)
-        {
-            static StraightLine CorrectDoubleSidePageTurningSplitLine(Size bookSize, PageTurningMode pageTurningMode, StraightLine splitLine)
-            {
-                var lineTop = new StraightLine(new Point(0, 0), new Vector(1, 0));
-                var lineBottom = new StraightLine(new Point(0, bookSize.Height), new Vector(1, 0));
-
-                var hitPoint1 = splitLine.GetIntersection(lineTop);
-                var hitPoint2 = splitLine.GetIntersection(lineBottom);
-
-                if (pageTurningMode == PageTurningMode.Next)
-                {
-                    hitPoint1 = new Point(Math.Max(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
-                    hitPoint2 = new Point(Math.Max(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
-                    return new StraightLine(hitPoint2, hitPoint1 - hitPoint2);
-                }
-                else if (pageTurningMode == PageTurningMode.Prev)
-                {
-                    hitPoint1 = new Point(Math.Min(bookSize.Width / 2, hitPoint1.X), hitPoint1.Y);
-                    hitPoint2 = new Point(Math.Min(bookSize.Width / 2, hitPoint2.X), hitPoint2.Y);
-                    return new StraightLine(hitPoint1, hitPoint2 - hitPoint1);
-                }
-
-                throw new ArgumentException();
-            }
-
-            if (dragStart.X < bookSize.Width / 2 &&
-                dragCurrent.X > dragStart.X)
-            {
-                pageTurningMode = PageTurningMode.Prev;
-                splitLine = new LineSegment(new Point(0, dragStart.Y), dragCurrent).GetPerpendicularLine();
-                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
-                return true;
-            }
-            else if (dragStart.X > bookSize.Width / 2 &&
-                dragCurrent.X < dragStart.X)
-            {
-                pageTurningMode = PageTurningMode.Next;
-                splitLine = new LineSegment(new Point(bookSize.Width - 1, dragStart.Y), dragCurrent).GetPerpendicularLine();
-                splitLine = CorrectDoubleSidePageTurningSplitLine(bookSize, pageTurningMode, splitLine);
-                return true;
-            }
-
-            splitLine = default;
-            pageTurningMode = PageTurningMode.None;
-            return false;
-        }
-
         private static Matrix ConstructBasicMatrix(Point origin, Vector iHat, Vector jHat)
         {
             return new Matrix(iHat.X, iHat.Y, jHat.X, jHat.Y, origin.X, origin.Y);
@@ -552,11 +569,12 @@ namespace PageTurningEffect.Components
             {
                 var t = (now - _dragEndTime) / _dragEndEasingSpan;
                 var easedT = _easingFunction.Ease(t);
+                var easedTForY = _easingFunctionOutForY.Ease(easedT);
 
                 isDragging = true;
                 dragCurrent = new Point(
                     _dragCurrent.X + (_dragEnd.X - _dragCurrent.X) * easedT,
-                    _dragCurrent.Y + (_dragEnd.Y - _dragCurrent.Y) * easedT);
+                    _dragCurrent.Y + (_dragEnd.Y - _dragCurrent.Y) * easedTForY);
             }
 
             // background
