@@ -748,7 +748,6 @@ namespace PageTurningEffect.Components
                     out var turningShadowRectP3,
                     out var turningShadowRectP4);
 
-                var turningShadowGeometry = BuildPolygon([turningShadowRectP1, turningShadowRectP2, turningShadowRectP3, turningShadowRectP4]);
                 var turningShadowBrush = new LinearGradientBrush(
                     new GradientStopCollection()
                     {
@@ -764,9 +763,7 @@ namespace PageTurningEffect.Components
 
                 var turningShadowClip = new CombinedGeometry(mask1, mask2);
 
-                drawingContext.PushClip(turningShadowClip);
-                drawingContext.DrawGeometry(turningShadowBrush, null, turningShadowGeometry);
-                drawingContext.Pop();
+                drawingContext.DrawGeometry(turningShadowBrush, null, turningShadowClip);
 
 #if Gizmos
                 drawingContext.PushOpacity(0.5);
