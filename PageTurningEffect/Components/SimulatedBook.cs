@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Text;
@@ -6,11 +7,13 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
 namespace PageTurningEffect.Components
 {
+    [ContentProperty(nameof(Content))]
     public class SimulatedBook : FrameworkElement
     {
         private readonly List<Point> _newPageMaskPoints1 = new List<Point>();
@@ -48,9 +51,9 @@ namespace PageTurningEffect.Components
             set { SetValue(BackgroundProperty, value); }
         }
 
-        public IBookSource Source
+        public IBookContent Content
         {
-            get { return (IBookSource)GetValue(SourceProperty); }
+            get { return (IBookContent)GetValue(SourceProperty); }
             set { SetValue(SourceProperty, value); }
         }
 
@@ -94,8 +97,8 @@ namespace PageTurningEffect.Components
                 new FrameworkPropertyMetadata(BookMode.TwoSide, FrameworkPropertyMetadataOptions.AffectsRender));
 
         public static readonly DependencyProperty SourceProperty =
-            DependencyProperty.Register(nameof(Source), typeof(IBookSource), typeof(SimulatedBook),
-                new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+            DependencyProperty.Register(nameof(Content), typeof(IBookContent), typeof(SimulatedBook),
+                new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, propertyChangedCallback: OnContentChanged));
 
         public static readonly DependencyProperty SpineShadowSizeProperty =
             DependencyProperty.Register(nameof(SpineShadowSize), typeof(double), typeof(SimulatedBook),
@@ -250,24 +253,36 @@ namespace PageTurningEffect.Components
         {
             if (_isDragging)
             {
-                var pageCount = Source?.PageCount ?? 0;
+                var source = Content;
+
+                var actualWidth = ActualWidth;
+                var actualHeight = ActualHeight;
+
+                var spineShadowSize = SpineShadowSize;
+                var padding = Padding;
+                var currentPage = CurrentPage;
+
+                var pageSize = new Size(
+                    actualWidth / 2 - spineShadowSize - padding.Left - padding.Right,
+                    actualHeight - padding.Top - padding.Bottom);
+                var pageCount = source?.GetPageCount(pageSize) ?? 0;
 
                 if (Mode == BookMode.TwoSide)
                 {
-                    if (CurrentPage + 2 < pageCount &&
+                    if (currentPage + 2 < pageCount &&
                         _dragStart.X > ActualWidth / 2 &&
                         _dragCurrent.X < ActualWidth / 2)
                     {
                         _dragEnd = new Point(1, _dragStart.Y);
-                        _targetPage = CurrentPage + 2;
+                        _targetPage = currentPage + 2;
                     }
                     else if (
-                        CurrentPage - 2 >= 0 &&
+                        currentPage - 2 >= 0 &&
                         _dragStart.X < ActualWidth / 2 &&
                         _dragCurrent.X > ActualWidth / 2)
                     {
                         _dragEnd = new Point(ActualWidth - 1, _dragStart.Y);
-                        _targetPage = CurrentPage - 2;
+                        _targetPage = currentPage - 2;
                     }
                     else
                     {
@@ -284,6 +299,17 @@ namespace PageTurningEffect.Components
             }
 
             base.OnMouseUp(e);
+        }
+
+        protected override IEnumerator LogicalChildren
+        {
+            get
+            {
+                if (Content is { } content)
+                {
+                    yield return content;
+                }
+            }
         }
 
         private void EnsureAnimationRunning()
@@ -371,6 +397,24 @@ namespace PageTurningEffect.Components
             splitLine = default;
             pageTurningMode = PageTurningMode.None;
             return false;
+        }
+
+        private static void OnContentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is not SimulatedBook book)
+            {
+                return;
+            }
+
+            if (e.OldValue is { } oldContent)
+            {
+                book.RemoveLogicalChild(oldContent);
+            }
+
+            if (e.NewValue is { } newContent)
+            {
+                book.AddLogicalChild(newContent);
+            }
         }
 
         private static void FlipPolygon(IList<Point> vertices, StraightLine line, IList<Point> newVerticesStorage)
@@ -523,7 +567,7 @@ namespace PageTurningEffect.Components
         {
             // properties
             var background = Background;
-            var source = Source;
+            var source = Content;
 
             var actualWidth = ActualWidth;
             var actualHeight = ActualHeight;
@@ -539,8 +583,9 @@ namespace PageTurningEffect.Components
             var bookRect = new Rect(0, 0, actualWidth, actualHeight);
 
             var pageSize = new Size(
-                    actualWidth / 2 - spineShadowSize - padding.Left - padding.Right,
-                    actualHeight - padding.Top - padding.Bottom);
+                actualWidth / 2 - spineShadowSize - padding.Left - padding.Right,
+                actualHeight - padding.Top - padding.Bottom);
+            var pageCount = source?.GetPageCount(pageSize) ?? 0;
 
             var leftPageOrigin = new Point(padding.Left, padding.Top);
             var rightPageOrigin = new Point(actualWidth / 2 + spineShadowSize + padding.Left, padding.Top);
@@ -585,7 +630,7 @@ namespace PageTurningEffect.Components
             {
                 // left content
                 if (currentPage >= 0 &&
-                    currentPage < source.PageCount)
+                    currentPage < pageCount)
                 {
                     drawingContext.PushTransform(leftPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage);
@@ -594,7 +639,7 @@ namespace PageTurningEffect.Components
 
                 // right content
                 if (currentPage >= 0 &&
-                    currentPage + 1 < source.PageCount)
+                    currentPage + 1 < pageCount)
                 {
                     drawingContext.PushTransform(rightPageRenderTransform);
                     source.RenderPage(drawingContext, pageSize, currentPage + 1);
@@ -656,14 +701,14 @@ namespace PageTurningEffect.Components
                     drawingContext.PushClip(mask1);
                     drawingContext.DrawGeometry(background, null, mask1);
                     if (pageTurningMode == PageTurningMode.Next &&
-                        currentPage + 3 >= 0 && currentPage + 3 < source.PageCount)
+                        currentPage + 3 >= 0 && currentPage + 3 < pageCount)
                     {
                         drawingContext.PushTransform(rightPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage + 3);
                         drawingContext.Pop();
                     }
                     else if (pageTurningMode == PageTurningMode.Prev &&
-                        currentPage - 2 >= 0 && currentPage - 2 < source.PageCount)
+                        currentPage - 2 >= 0 && currentPage - 2 < pageCount)
                     {
                         drawingContext.PushTransform(leftPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage - 2);
@@ -676,14 +721,14 @@ namespace PageTurningEffect.Components
                     drawingContext.DrawGeometry(background, null, mask2);
                     var turningPageRenderTransform = GetTurningPageRenderTransform(bookSize, padding, spineShadowSize, splitLine, pageTurningMode);
                     if (pageTurningMode == PageTurningMode.Next &&
-                        currentPage + 2 >= 0 && currentPage + 2 < source.PageCount)
+                        currentPage + 2 >= 0 && currentPage + 2 < pageCount)
                     {
                         drawingContext.PushTransform(turningPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage + 2);
                         drawingContext.Pop();
                     }
                     else if (pageTurningMode == PageTurningMode.Prev &&
-                        currentPage - 1 >= 0 && currentPage - 1 < source.PageCount)
+                        currentPage - 1 >= 0 && currentPage - 1 < pageCount)
                     {
                         drawingContext.PushTransform(turningPageRenderTransform);
                         source.RenderPage(drawingContext, pageSize, currentPage - 1);

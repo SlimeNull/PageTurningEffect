@@ -8,9 +8,9 @@ using PageTurningEffect.Components;
 
 namespace PageTurningEffect.Demo
 {
-    internal class TestBookSource : IBookSource
+    internal class TestBookContent : IBookContent
     {
-        public int PageCount => 10;
+        public int GetPageCount(Size pageSize) => 10;
 
         public void RenderPage(DrawingContext drawingContext, Size pageSize, int pageIndex)
         {
